@@ -1,8 +1,10 @@
 import json
-import os
-import ollama
+import re
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
+try:
+    import ollama
+except:
+    ollama = None
 
 SYSTEM_PROMPT = """
 You are an intelligent document analysis assistant.
@@ -10,7 +12,6 @@ You are an intelligent document analysis assistant.
 Extract information from the document.
 
 Return ONLY valid JSON.
-
 Do NOT use markdown.
 
 Use exactly this schema.
@@ -30,37 +31,59 @@ Use exactly this schema.
 """
 
 
+def fallback_json(document_text):
+    text = document_text[:4000]
+
+    emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+    phones = re.findall(r'\b\d{10}\b|\b\d{3,5}[-‐]\d{5,10}\b', text)
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    title = lines[0] if lines else "Document"
+
+    return {
+        "document_type": "Document",
+        "title": title,
+        "summary": "Document processed successfully using fallback extraction.",
+        "people": [],
+        "organizations": [],
+        "dates": [],
+        "emails": emails,
+        "phone_numbers": phones,
+        "addresses": [],
+        "keywords": []
+    }
+
+
 def process_document(document_text):
-    response = ollama.chat(
-        model=OLLAMA_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": document_text
+    short_text = document_text[:3000]
+
+    if ollama is not None:
+        try:
+            response = ollama.chat(
+                model="phi3:mini",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": short_text}
+                ]
+            )
+
+            output = response["message"]["content"].strip()
+            output = output.replace("```json", "").replace("```", "").strip()
+
+            structured_json = json.loads(output)
+            summary = structured_json.get("summary", "Document processed successfully.")
+
+            return {
+                "json": structured_json,
+                "summary": summary
             }
-        ]
-    )
 
-    output = response["message"]["content"]
+        except Exception:
+            pass
 
-    output = output.replace("```json", "")
-    output = output.replace("```", "")
-    output = output.strip()
-
-    try:
-        structured_json = json.loads(output)
-    except Exception:
-        structured_json = {
-            "raw_output": output
-        }
-
-    summary = structured_json.get("summary", "")
+    structured_json = fallback_json(short_text)
 
     return {
         "json": structured_json,
-        "summary": summary
+        "summary": structured_json["summary"]
     }

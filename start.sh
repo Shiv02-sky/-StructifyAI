@@ -4,7 +4,6 @@ set -e
 echo "Starting Ollama..."
 ollama serve > /tmp/ollama.log 2>&1 &
 
-# Wait for Ollama server to start
 sleep 8
 
 echo "Pulling model: $OLLAMA_MODEL"

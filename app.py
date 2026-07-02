@@ -4,12 +4,7 @@ import streamlit as st
 from extractor import extract_pdf_text
 from ocr import extract_image_text
 from ai_processor import process_document
-from database import (
-    initialize_database,
-    save_document,
-    get_documents,
-    get_document
-)
+from database import initialize_database, save_document, get_documents
 
 # ---------------- Page Config ---------------- #
 
@@ -32,21 +27,23 @@ Transform **PDFs** and **Images** into structured JSON completely offline.
 ### Tech Stack
 - 📄 PyMuPDF
 - 🖼️ Tesseract OCR
-- 🤖 Ollama (Phi-3 Mini)
+- 🤖 Ollama (Local Small Language Model)
 - 💾 SQLite
 """)
 
 st.divider()
 
-# ---------------- Upload ---------------- #
+# ---------------- File Upload ---------------- #
 
 uploaded_file = st.file_uploader(
     "Upload a PDF or Image",
-    type=["pdf", "png", "jpg", "jpeg"]
+    type=["pdf", "png", "jpg", "jpeg"],
+    accept_multiple_files=False
 )
 
-if uploaded_file is not None:
+# ---------------- Main Flow ---------------- #
 
+if uploaded_file is not None:
     st.success("File uploaded successfully!")
 
     col1, col2, col3 = st.columns(3)
@@ -58,106 +55,71 @@ if uploaded_file is not None:
         st.metric("Type", uploaded_file.type)
 
     with col3:
-        st.metric(
-            "Size (KB)",
-            round(uploaded_file.size / 1024, 2)
-        )
+        st.metric("Size (KB)", round(uploaded_file.size / 1024, 2))
 
     st.divider()
 
     if st.button("🚀 Extract Structured Data"):
 
-        # ---------------- Extract Text ---------------- #
-
+        # -------- Step 1: Extract Text -------- #
         if uploaded_file.type == "application/pdf":
-
-            with st.spinner("📄 Extracting PDF..."):
+            with st.spinner("Extracting PDF text..."):
                 extracted_text = extract_pdf_text(uploaded_file)
-
         else:
-
-            with st.spinner("🖼️ Running OCR..."):
+            with st.spinner("Running OCR on image..."):
                 extracted_text = extract_image_text(uploaded_file)
 
         st.success("Text extraction completed!")
 
         st.subheader("📜 Extracted Text")
+        st.text_area("Content", extracted_text, height=350)
 
-        st.text_area(
-            "Content",
-            extracted_text,
-            height=350
-        )
-
-        # ---------------- Local AI ---------------- #
-
-        with st.spinner("🤖 Running Local AI..."):
+        # -------- Step 2: Run Local AI -------- #
+        with st.spinner("Running Local AI..."):
             result = process_document(extracted_text)
 
-        # ---------------- JSON ---------------- #
-
+        # -------- Step 3: Show JSON -------- #
         st.subheader("📋 Structured JSON")
+        st.json(result["json"])
 
-        st.json(result)
-
-        # ---------------- Summary ---------------- #
-
+        # -------- Step 4: Show Summary -------- #
         st.subheader("📝 Summary")
+        st.success(result["summary"])
 
-        if isinstance(result.get("summary"), list):
-
-            for i, point in enumerate(result["summary"], start=1):
-                st.success(f"{i}. {point}")
-
-        else:
-
-            st.success(result.get("summary", ""))
-
-        # ---------------- Database ---------------- #
-
+        # -------- Step 5: Save to SQLite -------- #
         save_document(
             uploaded_file.name,
             uploaded_file.type,
             extracted_text,
-            json.dumps(result["json"], indent=4),
+            json.dumps(result["json"]),
             result["summary"]
         )
 
-        st.success("💾 Saved to SQLite!")
+        st.success("Saved to SQLite!")
 
-        # ---------------- Download ---------------- #
-
+        # -------- Step 6: Download JSON -------- #
         st.download_button(
-            label="⬇ Download JSON",
-            data=json.dumps(result, indent=4),
+            "⬇ Download JSON",
+            data=json.dumps(result["json"], indent=4),
             file_name="structured_data.json",
             mime="application/json"
         )
 
-st.divider()
-
-st.divider()
-
-st.header("📚 Previously Processed Documents")
-
-history = get_documents()
-
-if history:
-
-    for doc in history:
-
-        with st.expander(f"{doc[1]}  |  {doc[2]}"):
-
-            data = get_document(doc[0])
-
-            st.subheader("Summary")
-
-            st.write(data[5])
-
-            st.subheader("Structured JSON")
-
-            st.code(data[4], language="json")
+        st.divider()
+        st.info("Processing completed successfully.")
 
 else:
+    st.info("Upload a PDF or image to begin.")
 
-    st.info("No documents processed yet.")
+# ---------------- Saved Documents History ---------------- #
+
+st.divider()
+st.subheader("📚 Saved Documents History")
+
+documents = get_documents()
+
+if documents:
+    for doc in documents:
+        st.write(f"**ID:** {doc[0]} | **File:** {doc[1]} | **Created At:** {doc[2]}")
+else:
+    st.info("No documents saved yet.")
