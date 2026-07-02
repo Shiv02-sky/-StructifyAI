@@ -1,5 +1,8 @@
 import json
+import os
 import ollama
+
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
 
 SYSTEM_PROMPT = """
 You are an intelligent document analysis assistant.
@@ -28,9 +31,8 @@ Use exactly this schema.
 
 
 def process_document(document_text):
-
     response = ollama.chat(
-        model="phi3:mini",
+        model=OLLAMA_MODEL,
         messages=[
             {
                 "role": "system",
@@ -45,17 +47,13 @@ def process_document(document_text):
 
     output = response["message"]["content"]
 
-    # Remove markdown if present
     output = output.replace("```json", "")
     output = output.replace("```", "")
     output = output.strip()
 
     try:
-
         structured_json = json.loads(output)
-
     except Exception:
-
         structured_json = {
             "raw_output": output
         }
